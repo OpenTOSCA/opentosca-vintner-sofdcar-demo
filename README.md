@@ -1,5 +1,11 @@
 # SofDCar TOSCA4Cars Demonstration
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![TOSCA](https://img.shields.io/badge/TOSCA-1.3-blue.svg)](https://docs.oasis-open.org/tosca/TOSCA-Simple-Profile-YAML/v1.3/os/TOSCA-Simple-Profile-YAML-v1.3-os.html)
+[![OpenTOSCA](https://img.shields.io/badge/OpenTOSCA-%E2%9D%A4%EF%B8%8F-blue)](https://opentosca.org)
+[![BMWK](https://img.shields.io/badge/BMWK-SofDCar%20(19S21002)-blue.svg)](https://sofdcar.de)
+
+
 This repository contains the TOSCA4Cars demonstration for the SofDCar closing event.
 
 ## Overview
