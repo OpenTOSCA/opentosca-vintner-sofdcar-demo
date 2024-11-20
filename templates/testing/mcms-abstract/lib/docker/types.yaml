@@ -1,0 +1,180 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+node_types:
+    tosca4cars.nodes.Docker.Engine:
+        derived_from: tosca.nodes.Root
+
+        attributes:
+            application_address:
+                type: string
+                default: { eval: '.::.requirements::[.name=host]::.target::application_address' }
+
+        capabilities:
+            host:
+                type: tosca.capabilities.Compute
+
+    tosca4cars.nodes.Docker.Engine.Ansible.Localhost:
+        derived_from: tosca4cars.nodes.Docker.Engine
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   ansible.builtin.debug:
+                                            msg: dummy operation to properly set the component state
+
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   ansible.builtin.debug:
+                                            msg: dummy operation to properly set the component state
+
+
+    tosca4cars.nodes.Docker.Supervisord:
+        derived_from: tosca.nodes.Root
+        properties:
+            container_name:
+                type: string
+
+            network_mode:
+                type: string
+
+        attributes:
+            application_address:
+                type: string
+                default: { eval: '.::.requirements::[.name=host]::.target::application_address' }
+
+        capabilities:
+            host:
+                type: tosca.capabilities.Compute
+
+        requirements:
+            -   host:
+                    capability: tosca.capabilities.Compute
+                    relationship: tosca.relationships.HostedOn
+
+    tosca4cars.nodes.Docker.Supervisord.Ansible.Docker.Engine:
+        derived_from: tosca4cars.nodes.Docker.Supervisord
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   name: build image
+                                        community.docker.docker_image:
+                                            name: tosca4cars-supervisord
+                                            build:
+                                                path: "{{ 'src' | get_dir }}/supervisord"
+                                            source: build
+
+                                    -   name: start container
+                                        community.docker.docker_container:
+                                            name: "{{ SELF.container_name }}"
+                                            hostname: "{{ SELF.container_name }}"
+                                            state: started
+                                            image: tosca4cars-supervisord
+                                            network_mode: "{{ SELF.network_mode }}"
+                                            container_default_behavior: no_defaults
+                                            restart: true
+                                            restart_policy: unless-stopped
+                                            detach: true
+                                            tty: true
+
+                                    -   name: update apt packages
+                                        community.docker.docker_container_exec:
+                                            container: "{{ SELF.container_name }}"
+                                            command: apt-get update
+
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   name: stop container
+                                        community.docker.docker_container:
+                                            name: "{{ SELF.container_name }}"
+                                            state: absent
+
+
+
+    tosca4cars.nodes.Docker.Container:
+        derived_from: tosca.nodes.Root
+        properties:
+            container_name:
+                type: string
+
+            image_name:
+                type: string
+
+            network_mode:
+                type: string
+                default: bridge
+
+            command:
+                type: string
+                required: false
+
+        attributes:
+            application_address:
+                type: string
+                default: { eval: '.::.requirements::[.name=host]::.target::application_address' }
+
+        capabilities:
+            host:
+                type: tosca.capabilities.Compute
+
+        requirements:
+            -   host:
+                    capability: tosca.capabilities.Compute
+                    relationship: tosca.relationships.HostedOn
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   community.docker.docker_container:
+                                            name: "{{ SELF.container_name }}"
+                                            state: started
+                                            image: "{{ SELF.image_name }}"
+                                            command: "{{ SELF.command }}"
+                                            network_mode: "{{ SELF.network_mode }}"
+                                            container_default_behavior: no_defaults
+                                            restart: true
+                                            restart_policy: unless-stopped
+                                            detach: true
+                                            tty: true
+
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   community.docker.docker_container:
+                                            name: "{{ SELF.container_name }}"
+                                            state: absent

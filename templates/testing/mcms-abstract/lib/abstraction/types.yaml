@@ -1,0 +1,299 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+imports:
+    - ../can/types.yaml
+
+node_types:
+    tosca4cars.nodes.MCMS.Abstraction:
+        derived_from: tosca.nodes.Root
+
+        properties:
+            can_enabled:
+                type: boolean
+                default: true
+
+            can_port:
+                type: string
+                default: { eval: ".::.requirements[.name=can]::.target::can_interface" }
+
+            rest_port:
+                type: number
+                default: 50000
+
+            rest_enabled:
+                type: boolean
+                default: true
+
+            grpc_port:
+                type: number
+                default: 50051
+
+            grpc_enabled:
+                type: boolean
+                default: false
+
+            mock_address:
+                type: string
+                default: ""
+
+            artifact:
+                type: string
+                default: { eval: ".artifacts::artifact" }
+
+        attributes:
+            application_address:
+                type: string
+                default: { eval: ".::.requirements[.name=host]::.target::application_address" }
+
+        capabilities:
+            endpoint:
+                type: tosca.capabilities.Root
+
+        requirements:
+            -   host:
+                    capability: tosca.capabilities.Compute
+                    relationship: tosca.relationships.HostedOn
+
+            -   can:
+                    capability: tosca4cars.capabilities.Endpoint.CAN
+                    relationship: tosca4cars.relationships.CAN
+
+            -   flexible:
+                    capability: tosca4cars.capabilities.Endpoint.CAN
+                    relationship: tosca4cars.relationships.CAN
+
+    tosca4cars.nodes.MCMS.Abstraction.Physical~component#tosca.artifacts.Root::Ansible@RaspberryPi:
+        derived_from: tosca4cars.nodes.MCMS.Abstraction
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: HOST
+                        inputs:
+                            playbook:
+                                q:
+                                    -   name: install operational system dependencies
+                                        ansible.builtin.shell: |
+                                            apt-get update
+                                            apt-get install unzip -y
+
+                                    -   name: install application system dependencies
+                                        ansible.builtin.shell: |
+                                            apt-get update -y
+                                            apt-get install gcc libev-dev -y
+
+                                    -   name: create working directory
+                                        file:
+                                            path: /var/lib/mcms-abstraction
+                                            state: directory
+
+                                    -   name: extract deployment artifact in application directory
+                                        unarchive:
+                                            src: "{{ 'project' | get_dir }}/ensemble/{{ SELF.artifact.attributes.file }}"
+                                            dest: /var/lib/mcms-abstraction
+
+                                    -   name: create venv
+                                        ansible.builtin.shell:
+                                            cmd: python -m venv .venv
+                                            chdir: /var/lib/mcms-abstraction
+                                            creates: /var/lib/mcms-abstraction/.venv
+
+                                    -   name: install requirements
+                                        ansible.builtin.shell:
+                                            cmd: . .venv/bin/activate && pip install -r requirements.txt
+                                            chdir: /var/lib/mcms-abstraction
+
+                                    -   name: configure service
+                                        copy:
+                                            dest: /var/lib/mcms-abstraction/config.json
+                                            content: |
+                                                {
+                                                    "USE_CAN":          "{{ SELF.can_enabled | ternary('yes', 'no') }}",
+                                                    "PROVIDE_REST":     "{{ SELF.rest_enabled | ternary('yes', 'no') }}",
+                                                    "PROVIDE_GRPC":     "{{ SELF.grpc_enabled | ternary('yes', 'no') }}",
+                                                    "PORT_CAN":         "{{ SELF.can_port | first }}",
+                                                    "PORT_REST":        "{{ SELF.rest_port }}",
+                                                    "PORT_GRPC":        "{{ SELF.grpc_port }}",
+                                                    "IP_MOCK":          "{{ SELF.mock_address }}"
+                                                }
+
+                                    -   name: create start script
+                                        copy:
+                                            dest: /var/lib/mcms-abstraction/start.sh
+                                            content: |
+                                                #!/bin/bash
+                                                set -e
+
+                                                source .venv/bin/activate
+                                                cd src
+                                                python val_SeatTwin.py
+                                            mode: a+x
+
+                                    -   name: create systemd service
+                                        copy:
+                                            dest: /etc/systemd/system/mcms-abstraction.service
+                                            content: |
+                                                [Unit]
+                                                Description=MCMS Abstraction
+                                                After=multi-user.target
+
+                                                [Service]
+                                                Type=simple
+                                                Restart=always
+                                                WorkingDirectory=/var/lib/mcms-abstraction
+                                                ExecStart=/var/lib/mcms-abstraction/start.sh
+
+                                                [Install]
+                                                WantedBy=multi-user.target
+
+                                    -   name: start systemd service
+                                        systemd:
+                                            name: mcms-abstraction
+                                            state: started
+                                            enabled: true
+                                            daemon_reload: true
+
+                            playbookArgs:
+                                - --become
+                                - --key-file={{ HOST.ssh_key_file }}
+                                - --user={{ HOST.ssh_user }}
+                                - --ssh-common-args="-o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
+
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: HOST
+                        inputs:
+                            playbook:
+                                q:
+                                    -   name: stop systemd service
+                                        systemd:
+                                            name: mcms-abstraction
+                                            state: stopped
+
+                                    -   name: delete systemd service
+                                        file:
+                                            path: /etc/systemd/system/mcms-abstraction.service
+                                            state: absent
+
+                                    -   name: reload daemon
+                                        systemd:
+                                            daemon_reload: true
+
+                                    -   name: delete working directory
+                                        file:
+                                            path: /var/lib/mcms-abstraction
+                                            state: absent
+
+                            playbookArgs:
+                                - --become
+                                - --key-file={{ HOST.ssh_key_file }}
+                                - --user={{ HOST.ssh_user }}
+                                - --ssh-common-args="-o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
+
+    tosca4cars.nodes.MCMS.Abstraction.Virtual~component#tosca.artifacts.Root::Ansible@Docker.Supervisord:
+        derived_from: tosca4cars.nodes.MCMS.Abstraction
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   name: install apt packages
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: apt-get install -y gcc libev-dev
+
+                                    -   name: create directory
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: mkdir -p /app
+
+                                    -   name: copy artifact
+                                        community.docker.docker_container_copy_into:
+                                            container: "{{ HOST.container_name }}"
+                                            path: "{{ 'project' | get_dir }}/ensemble/{{ SELF.artifact.attributes.file }}"
+                                            container_path: /tmp/artifact.zip
+
+                                    -   name: extract artifact
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: unzip -o /tmp/artifact.zip -d /app
+
+                                    -   name: install dependencies
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: pip install -r requirements.txt
+                                            chdir: /app
+
+                                    -   name: touch app config
+                                        ansible.builtin.tempfile:
+                                            state: file
+                                        register: app_config
+
+                                    -   name: create app config
+                                        ansible.builtin.copy:
+                                            dest: "{{ app_config.path }}"
+                                            content: |
+                                                {
+                                                    "USE_CAN":          "{{ SELF.can_enabled | ternary('yes', 'no') }}",
+                                                    "PROVIDE_REST":     "{{ SELF.rest_enabled | ternary('yes', 'no') }}",
+                                                    "PROVIDE_GRPC":     "{{ SELF.grpc_enabled | ternary('yes', 'no') }}",
+                                                    "PORT_CAN":         "{{ SELF.can_port | first }}",
+                                                    "PORT_REST":        "{{ SELF.rest_port }}",
+                                                    "PORT_GRPC":        "{{ SELF.grpc_port }}",
+                                                    "IP_MOCK":          "{{ SELF.mock_address }}"
+                                                }
+
+                                    -   name: copy app config
+                                        community.docker.docker_container_copy_into:
+                                            container: "{{ HOST.container_name }}"
+                                            path: "{{ app_config.path }}"
+                                            container_path: /app/config.json
+
+                                    -   name: touch supervisord config
+                                        ansible.builtin.tempfile:
+                                            state: file
+                                        register: supervisord_config
+
+                                    -   name: create supervisord service
+                                        ansible.builtin.copy:
+                                            dest: "{{ supervisord_config.path }}"
+                                            content: |
+                                                [program:mcms_abstraction]
+                                                command=python val_SeatTwin.py
+                                                stdout_logfile=/dev/fd/1
+                                                stdout_logfile_maxbytes=0
+                                                redirect_stderr=true
+                                                autorestart=true
+                                                directory=/app/src
+
+                                    -   name: copy supervisord service
+                                        community.docker.docker_container_copy_into:
+                                            container: "{{ HOST.container_name }}"
+                                            path: "{{ supervisord_config.path }}"
+                                            container_path: /etc/supervisor/conf.d/mcms-abstraction.conf
+
+                                    -   name: start supervisord service
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: supervisorctl update
+
+                    # TODO: this
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   ansible.builtin.debug:
+                                            msg: dummy operation to properly set the component state

@@ -1,0 +1,2 @@
+pi_ssh_address: 10.42.0.150
+pi_ssh_key_file: /home/stoetzms/.ssh/id_ed25519

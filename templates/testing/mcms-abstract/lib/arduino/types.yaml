@@ -1,0 +1,38 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+node_types:
+    tosca4cars.nodes.Arduino:
+        derived_from: tosca.nodes.Root
+        properties:
+            device:
+                type: string
+
+        capabilities:
+            host:
+                type: tosca.capabilities.Compute
+
+    tosca4cars.nodes.Arduino.Ansible.Orchestrator:
+        derived_from: tosca4cars.nodes.Arduino
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   ansible.builtin.debug:
+                                            msg: dummy operation to properly set the component state
+
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   ansible.builtin.debug:
+                                            msg: dummy operation to properly set the component state

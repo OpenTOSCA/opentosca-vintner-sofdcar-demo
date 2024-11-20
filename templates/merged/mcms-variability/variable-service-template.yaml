@@ -1,0 +1,299 @@
+tosca_definitions_version: tosca_variability_1_0_rc_3
+imports:
+    - lib/types.yaml
+
+topology_template:
+    ###################################################
+    #
+    # Variability
+    #
+    ###################################################
+
+    variability:
+        inputs:
+            ecu_physically:
+                description: Is the ECU physically present?
+                type: boolean
+                default: false
+
+            hpc_physically:
+                description: Is the HPC physically present?
+                type: boolean
+                default: false
+                requires: hpc_installed
+
+            hpc_installed:
+                description: Is an HPC installed?
+                type: boolean
+                default: false
+
+            remote_access:
+                description: Is the remote access feature enabled?
+                type: boolean
+                default: false
+                requires: hpc_installed
+
+        expressions:
+            is_pECU: { equal: [ { variability_input: ecu_physically }, true ] }
+            is_vECU: { equal: [ { variability_input: ecu_physically }, false ] }
+            is_pHPC: { equal: [ { variability_input: hpc_physically }, true ] }
+            is_vHPC: { equal: [ { variability_input: hpc_physically }, false ] }
+
+            has_hpc_installed: { equal: [ { variability_input: hpc_installed }, true ] }
+            has_remote_access: { equal: [ { variability_input: remote_access }, true ] }
+
+        options:
+            artifact_default_condition_mode: container
+
+    ###################################################
+    #
+    # Inputs
+    #
+    ###################################################
+
+    inputs:
+        pi_ssh_address:
+            description: The ip address of the ssh connection to the Raspberry Pi.
+            type: string
+            default: mcms-hpc
+
+        pi_ssh_user:
+            description: The username for the ssh connection to the Raspberry Pi.
+            type: string
+            default: pi
+
+        pi_ssh_key_file:
+            description: The private key for the ssh connection to the Raspberry Pi.
+            type: string
+            default: /home/stoetzms/.ssh/id_rsa
+
+        arduino_device:
+            description: The USB port on which the Arduino is connected on the orchestrator.
+            type: string
+            default: /dev/ttyACM0
+
+        abstraction_can_bus_virtual_distributed_interface:
+            description: The CAN interface when virtualizing the CAN bus between the pHPC and vECU.
+            type: string
+            default: can0
+
+        localhost_can_bus_virtual_interface:
+            description: The CAN interface when virtualizing the CAN bus on localhost.
+            type: string
+            default: can0
+
+        can_bus_physical_interface:
+            description: The CAN interface to which the CAN bus is connected to on the HPC or orchestrator.
+            type: string
+            default: can0
+
+    ###################################################
+    #
+    # Outputs
+    #
+    ###################################################
+
+    outputs:
+        abstraction_address:
+            description: The ip address under which the abstraction application is available.
+            value: "{{ '::abstraction_application::application_address' | eval }}"
+
+        abstraction_port:
+            description: The HTTP port under which the abstraction application is available.
+            value: "{{ '::abstraction_application::rest_port' | eval }}"
+
+    node_templates:
+        ###################################################
+        #
+        # Frontend
+        #
+        ###################################################
+
+        frontend_application:
+            type: tosca4cars.nodes.MCMS.Frontend
+            persistent: true
+            conditions: { logic_expression: has_remote_access }
+            requirements:
+                -   host: frontend_hardware
+                -   abstraction: abstraction_application
+            artifacts:
+                -   artifact:
+                        type: tosca.artifacts.File
+                        file: lib/frontend/artifact.zip
+
+        frontend_hardware:
+            type: tosca4cars.nodes.Docker.Supervisord
+            properties:
+                container_name: mcms-frontend
+                network_mode: host
+            requirements:
+                -   host: docker_engine
+
+        ###################################################
+        #
+        # Abstraction Application
+        #
+        ###################################################
+
+        abstraction_application:
+            type: tosca4cars.nodes.MCMS.Abstraction
+            properties:
+                -   can_enabled: true
+                -   rest_port: 50000
+                -   rest_enabled: true
+                -   grpc_enabled: false
+            requirements:
+                -   host: abstraction_hardware_virtual
+                -   host: abstraction_hardware_physical
+                -   flexible: flexible_application
+                -   can:
+                        node: abstraction_can_bus_virtual_distributed # hybrid
+                        conditions:
+                            - { logic_expression: is_pHPC }
+                            - { logic_expression: is_vECU }
+                -   can:
+                        node: can_bus_virtual # virtual
+                        conditions:
+                            - { logic_expression: is_vHPC }
+                            - { logic_expression: is_vECU }
+                -   can:
+                        node: can_bus_physical # dirbyh, physical
+                        default_alternative: true
+            artifacts:
+                -   artifact:
+                        type: tosca.artifacts.File
+                        file: lib/abstraction/artifact.zip
+
+        abstraction_can_bus_virtual_distributed:
+            type: tosca4cars.nodes.CAN.Virtual.Distributed
+            properties:
+                -   can_interface: { get_input: abstraction_can_bus_virtual_distributed_interface }
+            requirements:
+                -   host: abstraction_hardware_physical
+                -   bridge: abstraction_can_bus_virtual_distributed_bridge
+
+        abstraction_can_bus_virtual_distributed_bridge:
+            type: tosca4cars.nodes.CAN.Bridge.Source
+            requirements:
+                -   host: abstraction_hardware_physical
+                -   target: can_bus_virtual_bridge
+            artifacts:
+                -   artifact:
+                        type: tosca.artifacts.File
+                        file: lib/can/can2x-linux-arm64.zip
+
+        abstraction_hardware_virtual:
+            type: tosca4cars.nodes.Docker.Supervisord
+            persistent: true
+            conditions:
+                - { logic_expression: is_vHPC }
+                - { logic_expression: has_hpc_installed }
+            properties:
+                -   container_name: mcms-hpc
+                -   network_mode: host
+            requirements:
+                -   host: docker_engine
+
+        abstraction_hardware_physical:
+            type: tosca4cars.nodes.RaspberryPi
+            persistent: true
+            conditions:
+                - { logic_expression: is_pHPC }
+                - { logic_expression: has_hpc_installed }
+            properties:
+                -   ssh_address: { get_input: pi_ssh_address }
+                -   ssh_user: { get_input: pi_ssh_user }
+                -   ssh_key_file: { get_input: pi_ssh_key_file }
+
+        ###################################################
+        #
+        # Flexible Application
+        #
+        ###################################################
+
+        flexible_application:
+            type: tosca4cars.nodes.MCMS.Flexible
+            persistent: true
+            requirements:
+                -   host: flexible_hardware_physical
+                -   host: flexible_hardware_virtual
+                -   can:
+                        node: can_bus_physical
+                        conditions: { logic_expression: is_pECU } # dirbyh, physical
+                -   can:
+                        node: can_bus_virtual
+                        conditions: { logic_expression: is_vECU } # hybrid, virtual
+            artifacts:
+                -   artifact:
+                        type: tosca.artifacts.File
+                        file: lib/flexible/physical.zip
+                        conditions: { logic_expression: is_pECU }
+                -   artifact:
+                        type: tosca.artifacts.File
+                        file: lib/flexible/virtual.zip
+                        conditions: { logic_expression: is_vECU }
+
+        flexible_hardware_virtual:
+            type: tosca4cars.nodes.Docker.Supervisord
+            conditions: { logic_expression: is_vECU }
+            properties:
+                -   container_name: mcms-ecu
+                -   network_mode: host
+            requirements:
+                -   host: docker_engine
+
+        flexible_hardware_physical:
+            type: tosca4cars.nodes.Arduino
+            conditions: { logic_expression: is_pECU }
+            properties:
+                -   device: { get_input: arduino_device }
+
+        ###################################################
+        #
+        # CAN Bus
+        #
+        ###################################################
+
+        can_bus_virtual_bridge:
+            type: tosca4cars.nodes.CAN.Bridge.Target
+            requirements:
+                -   host: can_bus_virtual_bridge_host
+                -   can: can_bus_virtual
+            artifacts:
+                -   artifact:
+                        type: tosca.artifacts.File
+                        file: lib/can/can2x-linux-x64.zip
+
+        can_bus_virtual_bridge_host:
+            type: tosca4cars.nodes.Docker.Supervisord
+            properties:
+                -   container_name: mcms-can-bridge
+                -   network_mode: host
+            requirements:
+                -   host: docker_engine
+
+        can_bus_virtual:
+            type: tosca4cars.nodes.CAN.Virtual
+            properties:
+                -   can_interface: { get_input: localhost_can_bus_virtual_interface }
+            requirements:
+                -   host: localhost
+
+        can_bus_physical:
+            type: tosca4cars.nodes.CAN.Physical
+            properties:
+                -   can_interface: { get_input: can_bus_physical_interface }
+
+        ###################################################
+        #
+        # Misc
+        #
+        ###################################################
+
+        docker_engine:
+            type: tosca4cars.nodes.Docker.Engine
+            requirements:
+                -   host: localhost
+
+        localhost:
+            type: tosca4cars.nodes.Localhost

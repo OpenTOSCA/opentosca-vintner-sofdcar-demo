@@ -1,0 +1,151 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+imports:
+    - lib/types.yaml
+
+topology_template:
+    ###################################################
+    #
+    # Inputs
+    #
+    ###################################################
+
+    inputs:
+        pi_ssh_address:
+            description: The ip address of the ssh connection to the Raspberry Pi.
+            type: string
+            default: mcms-hpc
+
+        pi_ssh_user:
+            description: The username for the ssh connection to the Raspberry Pi.
+            type: string
+            default: pi
+
+        pi_ssh_key_file:
+            description: The private key for the ssh connection to the Raspberry Pi.
+            type: string
+            default: /home/stoetzms/.ssh/id_rsa
+
+        arduino_device:
+            description: The USB port on which the Arduino is connected on the orchestrator.
+            type: string
+            default: /dev/ttyACM0
+
+        can_bus_physical_interface:
+            description: The CAN interface to which the CAN bus is connected to on the HPC or orchestrator.
+            type: string
+            default: can0
+
+    ###################################################
+    #
+    # Outputs
+    #
+    ###################################################
+
+    outputs:
+        abstraction_address:
+            description: The ip address under which the abstraction application is available.
+            value: "{{ '::abstraction_application::application_address' | eval }}"
+
+        abstraction_port:
+            description: The HTTP port under which the abstraction application is available.
+            value: "{{ '::abstraction_application::rest_port' | eval }}"
+
+    node_templates:
+        ###################################################
+        #
+        # Frontend
+        #
+        ###################################################
+
+        frontend_application:
+            type: tosca4cars.nodes.MCMS.Frontend~component#tosca.artifacts.Root::Ansible@Docker.Supervisord
+            requirements:
+                -   host: frontend_hardware
+                -   abstraction: abstraction_application
+            artifacts:
+                artifact:
+                    type: tosca.artifacts.File
+                    file: lib/frontend/artifact.zip
+
+        frontend_hardware:
+            type: tosca4cars.nodes.Docker.Supervisord.Ansible.Docker.Engine
+            properties:
+                container_name: mcms-frontend
+                network_mode: host
+            requirements:
+                -   host: docker_engine
+
+        ###################################################
+        #
+        # Abstraction Application
+        #
+        ###################################################
+
+        abstraction_application:
+            type: tosca4cars.nodes.MCMS.Abstraction.Physical~component#tosca.artifacts.Root::Ansible@RaspberryPi
+            properties:
+                can_enabled: true
+                rest_port: 50000
+                rest_enabled: true
+                grpc_enabled: false
+            requirements:
+                -   host: abstraction_hardware_physical
+                -   flexible: flexible_application
+                -   can: can_bus_physical
+            artifacts:
+                artifact:
+                    type: tosca.artifacts.File
+                    file: lib/abstraction/artifact.zip
+
+        abstraction_hardware_physical:
+            type: tosca4cars.nodes.RaspberryPi.Ansible.Orchestrator
+            properties:
+                ssh_address: { get_input: pi_ssh_address }
+                ssh_user: { get_input: pi_ssh_user }
+                ssh_key_file: { get_input: pi_ssh_key_file }
+
+        ###################################################
+        #
+        # Flexible Application
+        #
+        ###################################################
+
+        flexible_application:
+            type: tosca4cars.nodes.MCMS.Flexible.Physical~component#tosca.artifacts.Root::Ansible@Arduino
+            requirements:
+                -   host: flexible_hardware_physical
+                -   can: can_bus_physical
+            artifacts:
+                artifact:
+                    type: tosca.artifacts.File
+                    file: lib/flexible/physical.zip
+
+        flexible_hardware_physical:
+            type: tosca4cars.nodes.Arduino.Ansible.Orchestrator
+            properties:
+                device: { get_input: arduino_device }
+
+        ###################################################
+        #
+        # CAN Bus
+        #
+        ###################################################
+
+        can_bus_physical:
+            type: tosca4cars.nodes.CAN.Physical
+            properties:
+                can_interface: { get_input: can_bus_physical_interface }
+
+        ###################################################
+        #
+        # Misc
+        #
+        ###################################################
+
+        docker_engine:
+            type: tosca4cars.nodes.Docker.Engine.Ansible.Localhost
+            requirements:
+                -   host: localhost
+
+        localhost:
+            type: tosca4cars.nodes.Localhost.Ansible.Orchestrator

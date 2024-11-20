@@ -1,0 +1,14 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+imports:
+    - abstraction/types.yaml
+    - arduino/types.yaml
+    - can/types.yaml
+    - docker/types.yaml
+    - flexible/types.yaml
+    - frontend/types.yaml
+    - localhost/types.yaml
+    - pi/types.yaml
+
+    -   repository: unfurl
+        file: tosca_plugins/artifacts.yaml

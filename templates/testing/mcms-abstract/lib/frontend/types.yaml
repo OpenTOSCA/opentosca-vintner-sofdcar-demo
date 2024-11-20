@@ -1,0 +1,96 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+imports:
+    - ../can/types.yaml
+
+node_types:
+    tosca4cars.nodes.MCMS.Frontend:
+        derived_from: tosca.nodes.Root
+
+        properties:
+            artifact:
+                type: string
+                default: { eval: ".artifacts::artifact" }
+
+        requirements:
+            -   host:
+                    capability: tosca.capabilities.Compute
+                    relationship: tosca.relationships.HostedOn
+
+            -   abstraction:
+                    capability: tosca.capabilities.Root
+                    relationship: tosca.relationships.Root
+
+    tosca4cars.nodes.MCMS.Frontend~component#tosca.artifacts.Root::Ansible@Docker.Supervisord:
+        derived_from: tosca4cars.nodes.MCMS.Frontend
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   name: install application apt packages
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            # TODO: not every package is required
+                                            command: apt-get install -y apt-transport-https build-essential qtbase5-dev qt5-qmake libxcb-xinerama0-dev libxcb-xinerama0 "^libxcb.*"
+
+                                    -   name: create directory
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: mkdir -p /app
+
+                                    -   name: copy artifact
+                                        community.docker.docker_container_copy_into:
+                                            container: "{{ HOST.container_name }}"
+                                            path: "{{ 'project' | get_dir }}/ensemble/{{ SELF.artifact.attributes.file }}"
+                                            container_path: /tmp/artifact.zip
+
+                                    -   name: extract artifact
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: unzip -o /tmp/artifact.zip -d /app
+
+                                    -   name: touch supervisord config
+                                        ansible.builtin.tempfile:
+                                            state: file
+                                        register: supervisord_config
+
+                                    -   name: create supervisord service
+                                        ansible.builtin.copy:
+                                            dest: "{{ supervisord_config.path }}"
+                                            content: |
+                                                [program:mcms_frontend]
+                                                command=/app/artifact
+                                                stdout_logfile=/dev/fd/1
+                                                stdout_logfile_maxbytes=0
+                                                redirect_stderr=true
+                                                autorestart=true
+                                                environment=DISPLAY="{{ lookup('ansible.builtin.env', 'DISPLAY') }}"
+
+                                    -   name: copy supervisord service
+                                        community.docker.docker_container_copy_into:
+                                            container: "{{ HOST.container_name }}"
+                                            path: "{{ supervisord_config.path }}"
+                                            container_path: /etc/supervisor/conf.d/mcms-frontend.conf
+
+                                    -   name: start supervisord service
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: supervisorctl update
+
+                    # TODO: this
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   ansible.builtin.debug:
+                                            msg: dummy operation to properly set the component state

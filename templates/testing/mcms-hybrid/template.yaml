@@ -1,0 +1,192 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+imports:
+    - lib/types.yaml
+
+topology_template:
+    ###################################################
+    #
+    # Inputs
+    #
+    ###################################################
+
+    inputs:
+        pi_ssh_address:
+            description: The ip address of the ssh connection to the Raspberry Pi.
+            type: string
+            default: mcms-hpc
+
+        pi_ssh_user:
+            description: The username for the ssh connection to the Raspberry Pi.
+            type: string
+            default: pi
+
+        pi_ssh_key_file:
+            description: The private key for the ssh connection to the Raspberry Pi.
+            type: string
+            default: /home/stoetzms/.ssh/id_rsa
+
+        abstraction_can_bus_virtual_distributed_interface:
+            description: The CAN interface when virtualizing the CAN bus between the pHPC and vECU.
+            type: string
+            default: can0
+
+        localhost_can_bus_virtual_interface:
+            description: The CAN interface when virtualizing the CAN bus on localhost.
+            type: string
+            default: can0
+
+    ###################################################
+    #
+    # Outputs
+    #
+    ###################################################
+
+    outputs:
+        abstraction_address:
+            description: The ip address under which the abstraction application is available.
+            value: "{{ '::abstraction_application::application_address' | eval }}"
+
+        abstraction_port:
+            description: The HTTP port under which the abstraction application is available.
+            value: "{{ '::abstraction_application::rest_port' | eval }}"
+
+    node_templates:
+        ###################################################
+        #
+        # Frontend
+        #
+        ###################################################
+
+        frontend_application:
+            type: tosca4cars.nodes.MCMS.Frontend~component#tosca.artifacts.Root::Ansible@Docker.Supervisord
+            requirements:
+                -   host: frontend_hardware
+                -   abstraction: abstraction_application
+            artifacts:
+                artifact:
+                    type: tosca.artifacts.File
+                    file: lib/frontend/artifact.zip
+
+        frontend_hardware:
+            type: tosca4cars.nodes.Docker.Supervisord.Ansible.Docker.Engine
+            properties:
+                container_name: mcms-frontend
+                network_mode: host
+            requirements:
+                -   host: docker_engine
+
+        ###################################################
+        #
+        # Abstraction Application
+        #
+        ###################################################
+
+        abstraction_application:
+            type: tosca4cars.nodes.MCMS.Abstraction.Physical~component#tosca.artifacts.Root::Ansible@RaspberryPi
+            properties:
+                can_enabled: true
+                rest_port: 50000
+                rest_enabled: true
+                grpc_enabled: false
+            requirements:
+                -   host: abstraction_hardware_physical
+                -   flexible: flexible_application
+                -   can: abstraction_can_bus_virtual_distributed
+            artifacts:
+                artifact:
+                    type: tosca.artifacts.File
+                    file: lib/abstraction/artifact.zip
+
+        abstraction_can_bus_virtual_distributed:
+            type: tosca4cars.nodes.CAN.Virtual.Distributed.Ansible.RaspberryPi
+            properties:
+                can_interface: { get_input: abstraction_can_bus_virtual_distributed_interface }
+            requirements:
+                -   host: abstraction_hardware_physical
+                -   bridge: abstraction_can_bus_virtual_distributed_bridge
+
+        abstraction_can_bus_virtual_distributed_bridge:
+            type: tosca4cars.nodes.CAN.Bridge.Source~component#tosca.artifacts.Root::Ansible@RaspberryPi
+            requirements:
+                -   host: abstraction_hardware_physical
+                -   target: can_bus_virtual_bridge
+            artifacts:
+                artifact:
+                    type: tosca.artifacts.File
+                    file: lib/can/can2x-linux-arm64.zip
+
+        abstraction_hardware_physical:
+            type: tosca4cars.nodes.RaspberryPi.Ansible.Orchestrator
+            properties:
+                ssh_address: { get_input: pi_ssh_address }
+                ssh_user: { get_input: pi_ssh_user }
+                ssh_key_file: { get_input: pi_ssh_key_file }
+
+        ###################################################
+        #
+        # Flexible Application
+        #
+        ###################################################
+
+        flexible_application:
+            type: tosca4cars.nodes.MCMS.Flexible.Virtual~component#tosca.artifacts.Root::Ansible@Docker.Supervisord
+            requirements:
+                -   host: flexible_hardware_virtual
+                -   can: can_bus_virtual
+            artifacts:
+                artifact:
+                    type: tosca.artifacts.File
+                    file: lib/flexible/virtual.zip
+
+        flexible_hardware_virtual:
+            type: tosca4cars.nodes.Docker.Supervisord.Ansible.Docker.Engine
+            properties:
+                container_name: mcms-ecu
+                network_mode: host
+            requirements:
+                -   host: docker_engine
+
+        ###################################################
+        #
+        # CAN Bus
+        #
+        ###################################################
+
+        can_bus_virtual_bridge:
+            type: tosca4cars.nodes.CAN.Bridge.Target~component#tosca.artifacts.Root::Ansible@Docker.Supervisord
+            requirements:
+                -   host: can_bus_virtual_bridge_host
+                -   can: can_bus_virtual
+            artifacts:
+                artifact:
+                    type: tosca.artifacts.File
+                    file: lib/can/can2x-linux-x64.zip
+
+        can_bus_virtual_bridge_host:
+            type: tosca4cars.nodes.Docker.Supervisord.Ansible.Docker.Engine
+            properties:
+                container_name: mcms-can-bridge
+                network_mode: host
+            requirements:
+                -   host: docker_engine
+
+        can_bus_virtual:
+            type: tosca4cars.nodes.CAN.Virtual.Ansible.Localhost
+            properties:
+                can_interface: { get_input: localhost_can_bus_virtual_interface }
+            requirements:
+                -   host: localhost
+
+        ###################################################
+        #
+        # Misc
+        #
+        ###################################################
+
+        docker_engine:
+            type: tosca4cars.nodes.Docker.Engine.Ansible.Localhost
+            requirements:
+                -   host: localhost
+
+        localhost:
+            type: tosca4cars.nodes.Localhost.Ansible.Orchestrator

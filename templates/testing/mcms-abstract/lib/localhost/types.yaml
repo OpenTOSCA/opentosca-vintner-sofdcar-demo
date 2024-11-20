@@ -1,0 +1,63 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+node_types:
+    tosca4cars.nodes.Localhost:
+        derived_from: tosca.nodes.Root
+
+        attributes:
+            application_address:
+                type: string
+
+        capabilities:
+            host:
+                type: tosca.capabilities.Compute
+
+    tosca4cars.nodes.Localhost.Ansible.Orchestrator:
+        derived_from: tosca4cars.nodes.Localhost
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   name: install operational system dependencies
+                                        ansible.builtin.shell: |
+                                            apt-get update
+                                            apt-get install bind9-dnsutils -y
+                                        become: true
+
+                                    -   name: get ip
+                                        ansible.builtin.shell: dig +short `hostname -f` | head -n1 | xargs
+                                        register: dig
+
+                                    -   name: enable xhost
+                                        ansible.builtin.shell: xhost +
+                                        become: true
+
+
+                                    -   name: set attributes
+                                        set_fact:
+                                            application_address: '{{ dig.stdout | trim }}'
+
+                            resultTemplate: |
+                                - name: SELF
+                                  attributes:
+                                    application_address: "{{ outputs.application_address }}"
+
+                        outputs:
+                            application_address:
+
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   ansible.builtin.debug:
+                                            msg: dummy operation to properly set the component state

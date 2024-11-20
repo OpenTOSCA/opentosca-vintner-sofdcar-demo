@@ -1,0 +1,371 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+node_types:
+    tosca4cars.nodes.CAN:
+        derived_from: tosca.nodes.Root
+        properties:
+            can_interface:
+                type: string
+                default: can0
+            bitrate:
+                type: string
+                default: 250000
+                required: false
+        capabilities:
+            endpoint:
+                type: tosca4cars.capabilities.Endpoint.CAN
+                occurrences: [ 0, UNBOUNDED ]
+
+    tosca4cars.nodes.CAN.Physical:
+        derived_from: tosca4cars.nodes.CAN
+        properties:
+            left_interface:
+                type: string
+                default: can0
+                description: The CAN interface on the source device.
+
+            right_interface:
+                type: string
+                default: can0
+                description: The CAN interface on the target device.
+
+    tosca4cars.nodes.CAN.Virtual:
+        derived_from: tosca4cars.nodes.CAN
+        requirements:
+            -   host:
+                    capability: tosca.capabilities.Compute
+                    relationship: tosca.relationships.HostedOn
+
+    tosca4cars.nodes.CAN.Virtual.Distributed:
+        derived_from: tosca4cars.nodes.CAN.Virtual
+        requirements:
+            -   bridge:
+                    capability: tosca4cars.capabilities.Endpoint.CAN
+                    relationship: tosca4cars.relationships.CAN
+
+    tosca4cars.nodes.CAN.Virtual.Distributed.Ansible.RaspberryPi:
+        derived_from: tosca4cars.nodes.CAN.Virtual
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: HOST
+                        inputs:
+                            playbook:
+                                q:
+                                    -   shell: |
+                                            ip link add {{ SELF.can_interface }} type vcan
+                                            ip link set {{ SELF.can_interface }} up
+                                        register: create_command
+                                        failed_when:
+                                            - create_command.rc != 0
+                                            - "'File exists' not in create_command.stderr"
+                            playbookArgs:
+                                - --become
+                                - --key-file={{ HOST.ssh_key_file }}
+                                - --user={{ HOST.ssh_user }}
+                                - --ssh-common-args="-o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
+
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: HOST
+                        inputs:
+                            playbook:
+                                q:
+                                    -   shell: |
+                                            ip link set {{ SELF.can_interface }} down
+                                            ip link delete {{ SELF.can_interface }}
+
+                            playbookArgs:
+                                - --become
+                                - --key-file={{ HOST.ssh_key_file }}
+                                - --user={{ HOST.ssh_user }}
+                                - --ssh-common-args="-o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
+
+    tosca4cars.nodes.CAN.Virtual.Ansible.Localhost:
+        derived_from: tosca4cars.nodes.CAN.Virtual
+        properties:
+            can_interface:
+                type: string
+                default: can0
+
+        requirements:
+            -   host:
+                    capability: tosca.capabilities.Compute
+                    relationship: tosca.relationships.HostedOn
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   shell: |
+                                            ip link add {{ SELF.can_interface }} type vcan
+                                            ip link set {{ SELF.can_interface }} up
+                                        register: create_command
+                                        failed_when:
+                                            - create_command.rc != 0
+                                            - "'File exists' not in (create_command.stderr | default(''))"
+
+                            playbookArgs:
+                                - --become
+
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   shell: |
+                                            ip link set {{ SELF.can_interface }} down
+                                            ip link delete {{ SELF.can_interface }}
+                            playbookArgs:
+                                - --become
+
+    # https://github.com/milesstoetzner/stoetzms-can2x
+    tosca4cars.nodes.CAN.Bridge.Source:
+        derived_from: tosca.nodes.Root
+
+        properties:
+            can_interface:
+                type: string
+                default: { eval: ".::.capabilities[.name=bridge]::.relationships[.name=bridge]::.source::can_interface" }
+
+            target_endpoint:
+                type: string
+                default: { eval: ".::.requirements::[.name=target]::.target::application_address" }
+
+            target_port:
+                type: string
+                default: { eval: ".::.requirements::[.name=target]::.target::port" }
+
+            artifact:
+                type: string
+                default: { eval: ".artifacts::artifact" }
+
+        capabilities:
+            bridge:
+                type: tosca4cars.capabilities.Endpoint.CAN
+
+    tosca4cars.nodes.CAN.Bridge.Source~component#tosca.artifacts.Root::Ansible@RaspberryPi:
+        derived_from: tosca4cars.nodes.CAN.Bridge.Source
+
+        requirements:
+            -   host:
+                    capability: tosca.capabilities.Compute
+                    relationship: tosca.relationships.HostedOn
+
+            -   target:
+                    capability: tosca.capabilities.Root
+                    relationship: tosca.relationships.Root
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: HOST
+                        inputs:
+                            playbook:
+                                q:
+                                    -   name: install operational system dependencies
+                                        ansible.builtin.shell: |
+                                            apt-get update
+                                            apt-get install unzip -y
+
+                                    -   name: create working directory
+                                        file:
+                                            path: /var/lib/can2x
+                                            state: directory
+
+                                    -   name: extract deployment artifact in application directory
+                                        unarchive:
+                                            src: "{{ 'project' | get_dir }}/ensemble/{{ SELF.artifact.attributes.file }}"
+                                            dest: /var/lib/can2x
+
+                                    -   name: create systemd service
+                                        copy:
+                                            dest: /etc/systemd/system/can2x.service
+                                            content: |
+                                                [Unit]
+                                                Description=can2x
+                                                After=multi-user.target
+
+                                                [Service]
+                                                Type=simple
+                                                Restart=always
+                                                WorkingDirectory=/var/lib/can2x
+                                                ExecStart=/var/lib/can2x/can2x bridge start --source can --source-name {{ SELF.can_interface }} --target socketio --target-endpoint http://{{ SELF.target_endpoint }}:{{ SELF.target_port }}
+
+                                                [Install]
+                                                WantedBy=multi-user.target
+
+                                    -   name: start systemd service
+                                        systemd:
+                                            name: can2x
+                                            state: started
+                                            enabled: true
+                                            daemon_reload: true
+
+                            playbookArgs:
+                                - --become
+                                - --key-file={{ HOST.ssh_key_file }}
+                                - --user={{ HOST.ssh_user }}
+                                - --ssh-common-args="-o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
+
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: HOST
+                        inputs:
+                            playbook:
+                                q:
+                                    -   name: stop systemd service
+                                        systemd:
+                                            name: can2x
+                                            state: stopped
+
+                                    -   name: delete systemd service
+                                        file:
+                                            path: /etc/systemd/system/can2x.service
+                                            state: absent
+
+                                    -   name: reload daemon
+                                        systemd:
+                                            daemon_reload: true
+
+                                    -   name: delete working directory
+                                        file:
+                                            path: /var/lib/can2x
+                                            state: absent
+
+                            playbookArgs:
+                                - --become
+                                - --key-file={{ HOST.ssh_key_file }}
+                                - --user={{ HOST.ssh_user }}
+                                - --ssh-common-args="-o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
+
+    tosca4cars.nodes.CAN.Bridge.Target:
+        derived_from: tosca.nodes.Root
+
+        properties:
+            can_interface:
+                type: string
+                default: { eval: ".::.requirements[.name=can]::.target::can_interface" }
+
+            port:
+                type: string
+                default: 3000
+
+            artifact:
+                type: string
+                default: { eval: ".artifacts::artifact" }
+
+        attributes:
+            application_address:
+                type: string
+                default: { eval: ".::.requirements::[.name=host]::.target::application_address" }
+
+        capabilities:
+            endpoint:
+                type: tosca.relationships.Root
+
+        requirements:
+            -   host:
+                    capability: tosca.capabilities.Compute
+                    relationship: tosca.relationships.HostedOn
+
+            -   can:
+                    capability: tosca4cars.capabilities.Endpoint.CAN
+                    relationship: tosca4cars.relationships.CAN
+
+    tosca4cars.nodes.CAN.Bridge.Target~component#tosca.artifacts.Root::Ansible@Docker.Supervisord:
+        derived_from: tosca4cars.nodes.CAN.Bridge.Target
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   name: install application apt packages
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: apt-get install -y can-utils
+
+                                    -   name: create directory
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: mkdir -p /app
+
+                                    -   name: copy artifact
+                                        community.docker.docker_container_copy_into:
+                                            container: "{{ HOST.container_name }}"
+                                            path: "{{ 'project' | get_dir }}/ensemble/{{ SELF.artifact.attributes.file }}"
+                                            container_path: /tmp/artifact.zip
+
+                                    -   name: extract artifact
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: unzip -o /tmp/artifact.zip -d /app
+
+                                    -   name: touch supervisord config
+                                        ansible.builtin.tempfile:
+                                            state: file
+                                        register: supervisord_config
+
+                                    -   name: create supervisord service
+                                        ansible.builtin.copy:
+                                            dest: "{{ supervisord_config.path }}"
+                                            content: |
+                                                [program:can2x]
+                                                command=/app/can2x bridge start --source socketio --source-host 0.0.0.0 --source-port {{ SELF.port }} --target can --target-name {{ SELF.can_interface }}
+                                                stdout_logfile=/dev/fd/1
+                                                stdout_logfile_maxbytes=0
+                                                redirect_stderr=true
+                                                autorestart=true
+
+                                    -   name: copy supervisord service
+                                        community.docker.docker_container_copy_into:
+                                            container: "{{ HOST.container_name }}"
+                                            path: "{{ supervisord_config.path }}"
+                                            container_path: /etc/supervisor/conf.d/can2x.conf
+
+                                    -   name: start supervisord service
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: supervisorctl update
+
+                    # TODO: this
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   ansible.builtin.debug:
+                                            msg: dummy operation to properly set the component state
+
+capability_types:
+    tosca4cars.capabilities.Endpoint.CAN:
+        derived_from: tosca.capabilities.Root
+
+relationship_types:
+    tosca4cars.relationships.CAN:
+        derived_from: tosca.relationships.Root

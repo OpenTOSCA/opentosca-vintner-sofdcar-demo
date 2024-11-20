@@ -1,0 +1,74 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+node_types:
+    tosca4cars.nodes.RaspberryPi:
+        derived_from: tosca.nodes.Root
+
+        properties:
+            ssh_address:
+                type: string
+
+            ssh_user:
+                type: string
+
+            ssh_key_file:
+                type: string
+
+        attributes:
+            application_address:
+                type: string
+                default: {eval: '.::ssh_address'}
+
+        capabilities:
+            host:
+                type: tosca.capabilities.Compute
+            endpoint:
+                type: unfurl.capabilities.Endpoint.Ansible
+                properties:
+                    connection: ssh
+                    host: { eval: '.parent::ssh_address' }
+
+
+    tosca4cars.nodes.RaspberryPi.Ansible.Orchestrator:
+        derived_from: tosca4cars.nodes.RaspberryPi
+        
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   ansible.builtin.debug:
+                                            msg: dummy operation to properly set the component state
+
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   ansible.builtin.debug:
+                                            msg: dummy operation to properly set the component state
+
+            # TODO: test configure
+            #            configure:
+            #                implementation:
+            #                    primary: Ansible
+            #                    operation_host: HOST
+            #                inputs:
+            #                    playbook:
+            #                       q:
+            #                           -   name: Install helpful tools
+            #                               ansible.builtin.shell: |
+            #                                   apt-get update
+            #                                   apt-get install sudo unzip tree nano wget jq net-tools curl git stress nmap -y
+            #                   playbookArgs:
+            #                       - --become
+            #                       - --key-file={{ SELF.ssh_key_file }}
+            #                       - --user={{ SELF.ssh_user }}
+            #                       - --ssh-common-args="-o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"

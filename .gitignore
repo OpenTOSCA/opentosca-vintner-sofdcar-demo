@@ -1,0 +1,11 @@
+.idea
+.env
+.vscode
+
+assets/vintner-linux-x64
+assets/vintner-linux-arm64
+assets/vintner-win-x64.exe
+
+*.zip
+*.tar
+*.tar.gz

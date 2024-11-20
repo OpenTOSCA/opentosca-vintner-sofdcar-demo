@@ -1,0 +1,4 @@
+hpc_physically: false
+ecu_physically: false
+hpc_installed: true
+remote_access: true

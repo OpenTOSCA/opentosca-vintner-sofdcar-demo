@@ -1,0 +1,78 @@
+-   component: tosca4cars.nodes.MCMS.Abstraction
+    hosting:
+        - tosca4cars.nodes.Docker.Supervisord
+    assign: tosca4cars.nodes.MCMS.Abstraction.Virtual~component#tosca.artifacts.Root::Ansible@Docker.Supervisord
+    technology: Ansible
+    artifact: tosca.artifacts.Root
+
+-   component: tosca4cars.nodes.MCMS.Abstraction
+    hosting:
+        - tosca4cars.nodes.RaspberryPi
+    assign: tosca4cars.nodes.MCMS.Abstraction.Physical~component#tosca.artifacts.Root::Ansible@RaspberryPi
+    technology: Ansible
+    artifact: tosca.artifacts.Root
+
+-   component: tosca4cars.nodes.MCMS.Flexible
+    hosting:
+        - tosca4cars.nodes.Docker.Supervisord
+    assign: tosca4cars.nodes.MCMS.Flexible.Virtual~component#tosca.artifacts.Root::Ansible@Docker.Supervisord
+    technology: Ansible
+    artifact: tosca.artifacts.Root
+
+-   component: tosca4cars.nodes.MCMS.Flexible
+    hosting:
+        - tosca4cars.nodes.Arduino
+    assign: tosca4cars.nodes.MCMS.Flexible.Physical~component#tosca.artifacts.Root::Ansible@Arduino
+    technology: Ansible
+    artifact: tosca.artifacts.Root
+
+-   component: tosca4cars.nodes.CAN.Virtual.Distributed
+    hosting:
+        - tosca4cars.nodes.RaspberryPi
+    assign: tosca4cars.nodes.CAN.Virtual.Distributed.Ansible.RaspberryPi
+    technology: Ansible
+
+-   component: tosca4cars.nodes.CAN.Virtual
+    hosting:
+        - tosca4cars.nodes.Localhost
+    assign: tosca4cars.nodes.CAN.Virtual.Ansible.Localhost
+    technology: Ansible
+
+-   component: tosca4cars.nodes.MCMS.Frontend
+    assign: tosca4cars.nodes.MCMS.Frontend~component#tosca.artifacts.Root::Ansible@Docker.Supervisord
+    technology: Ansible
+    artifact: tosca.artifacts.Root
+
+-   component: tosca4cars.nodes.Docker.Supervisord
+    assign: tosca4cars.nodes.Docker.Supervisord.Ansible.Docker.Engine
+    technology: Ansible
+
+-   component: tosca4cars.nodes.CAN.Bridge.Source
+    assign: tosca4cars.nodes.CAN.Bridge.Source~component#tosca.artifacts.Root::Ansible@RaspberryPi
+    technology: Ansible
+    artifact: tosca.artifacts.Root
+
+-   component: tosca4cars.nodes.CAN.Bridge.Target
+    assign: tosca4cars.nodes.CAN.Bridge.Target~component#tosca.artifacts.Root::Ansible@Docker.Supervisord
+    technology: Ansible
+    artifact: tosca.artifacts.Root
+
+-   component: tosca4cars.nodes.RaspberryPi
+    assign: tosca4cars.nodes.RaspberryPi.Ansible.Orchestrator
+    technology: Ansible
+
+-   component: tosca4cars.nodes.Arduino
+    assign: tosca4cars.nodes.Arduino.Ansible.Orchestrator
+    technology: Ansible
+
+-   component: tosca4cars.nodes.Docker.Engine
+    assign: tosca4cars.nodes.Docker.Engine.Ansible.Localhost
+    technology: Ansible
+
+-   component: tosca4cars.nodes.Localhost
+    assign: tosca4cars.nodes.Localhost.Ansible.Orchestrator
+    technology: Ansible
+
+-   component: tosca4cars.nodes.CAN.Physical
+    assign: tosca4cars.nodes.CAN.Physical
+    technology: null

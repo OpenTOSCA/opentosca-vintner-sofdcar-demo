@@ -1,0 +1,163 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+imports:
+    - ../can/types.yaml
+
+node_types:
+    tosca4cars.nodes.MCMS.Flexible:
+        derived_from: tosca.nodes.Root
+
+        capabilities:
+            endpoint:
+                type: tosca4cars.capabilities.Endpoint.CAN
+
+        requirements:
+            -   host:
+                    capability: tosca.capabilities.Container
+                    relationship: tosca.relationships.HostedOn
+
+            -   can:
+                    capability: tosca4cars.capabilities.Endpoint.CAN
+                    relationship: tosca4cars.relationships.CAN
+
+    tosca4cars.nodes.MCMS.Flexible.Physical~component#tosca.artifacts.Root::Ansible@Arduino:
+        derived_from: tosca4cars.nodes.MCMS.Flexible
+
+        properties:
+            artifact:
+                type: string
+                default: { eval: ".artifacts::artifact " }
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   name: create working directory
+                                        tempfile:
+                                            state: directory
+                                        register: working_directory
+
+                                    -   name: extract deployment artifact in application directory
+                                        unarchive:
+                                            src: "{{ 'project' | get_dir }}/ensemble/{{ SELF.artifact.attributes.file }}"
+                                            dest: "{{ working_directory.path }}"
+
+                                    # https://docs.platformio.org/en/latest/core/userguide/cmd_run.html
+                                    -   name: build and upload firmware
+                                        shell:
+                                            cmd: pio run -e mega -t upload --upload-port {{ HOST.device }}
+                                            chdir: "{{ working_directory.path }}"
+
+    tosca4cars.nodes.MCMS.Flexible.Virtual~component#tosca.artifacts.Root::Ansible@Docker.Supervisord:
+        derived_from: tosca4cars.nodes.MCMS.Flexible
+
+        properties:
+            can_interface:
+                type: string
+                default: { eval: ".::.requirements[.name=can]::.target::can_interface" }
+
+            artifact:
+                type: string
+                default: { eval: ".artifacts::artifact " }
+
+        interfaces:
+            Standard:
+                operations:
+                    create:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   name: install apt packages
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: apt-get install -y gcc libev-dev
+
+                                    -   name: create directory
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: mkdir -p /app
+
+                                    -   name: copy artifact
+                                        community.docker.docker_container_copy_into:
+                                            container: "{{ HOST.container_name }}"
+                                            path: "{{ 'project' | get_dir }}/ensemble/{{ SELF.artifact.attributes.file }}"
+                                            container_path: /tmp/artifact.zip
+
+                                    -   name: extract artifact
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: unzip -o /tmp/artifact.zip -d /app
+
+                                    -   name: install dependencies
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: pip install -r requirements.txt
+                                            chdir: /app
+
+                                    -   name: touch app config
+                                        ansible.builtin.tempfile:
+                                            state: file
+                                        register: app_config
+
+                                    -   name: create config
+                                        ansible.builtin.copy:
+                                            dest: "{{ app_config.path }}"
+                                            content: |
+                                                {
+                                                    "USE_CAN":          "yes",
+                                                    "PORT_CAN":         "{{ SELF.can_interface }}"
+                                                }
+
+                                    -   name: copy config
+                                        community.docker.docker_container_copy_into:
+                                            container: "{{ HOST.container_name }}"
+                                            path: "{{ app_config.path }}"
+                                            container_path: /app/config.json
+
+                                    -   name: touch supervisord config
+                                        ansible.builtin.tempfile:
+                                            state: file
+                                        register: supervisord_config
+
+                                    -   name: create supervisord service
+                                        ansible.builtin.copy:
+                                            dest: "{{ supervisord_config.path }}"
+                                            content: |
+                                                [program:mcms_flexible]
+                                                command=python hwl_Mock.py
+                                                stdout_logfile=/dev/fd/1
+                                                stdout_logfile_maxbytes=0
+                                                redirect_stderr=true
+                                                autorestart=true
+                                                directory=/app/src
+
+                                    -   name: copy supervisord service
+                                        community.docker.docker_container_copy_into:
+                                            container: "{{ HOST.container_name }}"
+                                            path: "{{ supervisord_config.path }}"
+                                            container_path: /etc/supervisor/conf.d/mcms-flexible.conf
+
+                                    -   name: start supervisord service
+                                        community.docker.docker_container_exec:
+                                            container: "{{ HOST.container_name }}"
+                                            command: supervisorctl update
+
+                    # TODO: this
+                    delete:
+                        implementation:
+                            primary: Ansible
+                            operation_host: ORCHESTRATOR
+                        inputs:
+                            playbook:
+                                q:
+                                    -   ansible.builtin.debug:
+                                            msg: dummy operation to properly set the component state

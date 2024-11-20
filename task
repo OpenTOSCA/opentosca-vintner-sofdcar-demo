@@ -1,0 +1,39 @@
+#!/usr/bin/bash
+set -e
+
+# Set TASK_ROOT_DIR, i.e., the root directory of the project
+TASK_ROOT_DIR="$(dirname "$(realpath "$0")")"
+export TASK_ROOT_DIR
+
+# Set TASK_TASK_DIR, i.e., the directory in which the task is located
+# Caution: Should not be used in transpiled JS
+TASK_TASK_DIR="${TASK_ROOT_DIR}/tasks/${REPLACED}"
+export TASK_TASK_DIR
+
+# Set TASK, i.e., the path of the binary
+TASK_BIN="${TASK_ROOT_DIR}/task"
+export TASK_BIN
+
+# Set working directory
+cd "$TASK_ROOT_DIR"
+
+# Ensure that first argument exists
+COMMAND="$1"
+if [ -z "${COMMAND}" ]; then
+  echo "First argument must be the command to execute"
+  exit 1
+fi
+
+# Replace ":" with "/"
+REPLACED="${COMMAND//://}"
+
+# Run task.sh
+TASK_SH=tasks/${REPLACED}/task.sh
+if [ -f "${TASK_SH}" ]; then
+  bash -e ${TASK_SH} "${@:2}"
+  exit 0
+fi
+
+# Throw
+echo Did not find command "${COMMAND}"
+exit 1
