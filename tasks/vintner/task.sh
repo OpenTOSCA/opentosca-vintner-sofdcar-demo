@@ -22,7 +22,6 @@ if [[ "${VINTNER_LOCAL}" ]]; then
     VINTNER="./../opentosca-vintner/task vintner"
 fi;
 
-echo
 echo "using ${VINTNER}"
 
 ${VINTNER} ${@}

@@ -9,8 +9,8 @@ on:
 
 concurrency: night
 jobs:
-    general:
-        name: General
+    night:
+        name: Night
         runs-on: ubuntu-22.04
         steps:
             -   name: (PREPARE) Checkout repository
@@ -23,7 +23,7 @@ jobs:
 
             -   name: (PREPARE) Log Vintner Version
                 shell: bash
-                run: vintner --version
+                run: ./task vintner --version
 
             -   name: (PREPARE) Pull Example Dependencies
                 run: ./task examples:pull
