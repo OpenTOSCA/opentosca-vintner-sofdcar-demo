@@ -1,0 +1,32 @@
+name: Night
+on:
+    workflow_dispatch:
+    schedule:
+        -   cron: '20 4 * * 2'
+    push:
+        branches:
+            - fix-night-workflow
+
+concurrency: night
+jobs:
+    general:
+        name: General
+        runs-on: ubuntu-22.04
+        steps:
+            -   name: (PREPARE) Checkout repository
+                uses: actions/checkout@v3
+                with:
+                    lfs: true
+
+            -   name: (PREPARE) Update Vintner
+                run: ./task vintner:update
+
+            -   name: (PREPARE) Log Vintner Version
+                shell: bash
+                run: vintner --version
+
+            -   name: (PREPARE) Pull Example Dependencies
+                run: ./task examples:pull
+
+            -   name: (TEST) Execute Tests
+                run: ./task test

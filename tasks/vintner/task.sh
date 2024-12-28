@@ -18,7 +18,9 @@ if [ ! -f "${VINTNER}" ]; then
 fi
 
 # use local vintner
-#VINTNER="./../opentosca-vintner/task vintner"
+if [[ "${VINTNER_LOCAL}" ]]; then
+    VINTNER="./../opentosca-vintner/task vintner"
+fi;
 
 echo
 echo "using ${VINTNER}"
