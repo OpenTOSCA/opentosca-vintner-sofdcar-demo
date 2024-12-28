@@ -20,4 +20,7 @@ fi
 # use local vintner
 #VINTNER="./../opentosca-vintner/task vintner"
 
+echo
+echo "using ${VINTNER}"
+
 ${VINTNER} ${@}
