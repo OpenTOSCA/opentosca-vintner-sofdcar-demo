@@ -19,7 +19,10 @@ jobs:
                     lfs: true
 
             -   name: (PREPARE) Update Vintner
-                run: ./task vintner:update
+                run: |
+                    rm -f assets/vintner-linux-x64.xz
+                    rm -f assets/vintner-linux-x64
+                    wget https://github.com/OpenTOSCA/opentosca-vintner/releases/download/latest/vintner-linux-x64.xz -P assets
 
             -   name: (PREPARE) Log Vintner Version
                 shell: bash

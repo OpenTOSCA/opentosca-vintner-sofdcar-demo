@@ -1,5 +1,6 @@
 # OpenTOSCA Vintner SofDCar Demo
 
+[![Night](https://github.com/OpenTOSCA/opentosca-vintner-sofdcar-demo/actions/workflows/night.yaml/badge.svg)](https://github.com/OpenTOSCA/opentosca-vintner-sofdcar-demo/actions/workflows/night.yaml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![TOSCA](https://img.shields.io/badge/TOSCA-1.3-blue.svg)](https://docs.oasis-open.org/tosca/TOSCA-Simple-Profile-YAML/v1.3/os/TOSCA-Simple-Profile-YAML-v1.3-os.html)
 [![OpenTOSCA](https://img.shields.io/badge/OpenTOSCA-%E2%9D%A4%EF%B8%8F-blue)](https://opentosca.org)
