@@ -5,6 +5,7 @@
 [![TOSCA](https://img.shields.io/badge/TOSCA-1.3-blue.svg)](https://docs.oasis-open.org/tosca/TOSCA-Simple-Profile-YAML/v1.3/os/TOSCA-Simple-Profile-YAML-v1.3-os.html)
 [![OpenTOSCA](https://img.shields.io/badge/OpenTOSCA-%E2%9D%A4%EF%B8%8F-blue)](https://opentosca.org)
 [![BMWK](https://img.shields.io/badge/BMWK-SofDCar%20(19S21002)-blue.svg)](https://sofdcar.de)
+[![Zenodo](https://zenodo.org/badge/DOI/10.5281/zenodo.14638680.svg)](https://doi.org/10.5281/zenodo.14638680)
 
 
 This repository contains the TOSCA4Cars demonstration for the SofDCar closing event.
@@ -13,7 +14,7 @@ This repository contains the TOSCA4Cars demonstration for the SofDCar closing ev
 
 ![Overview](assets/overview.svg)
 
-We use [OpenTOSCA Vintner (4cca487655097f296d19e37bd51aa64552dcc9dflol)](https://github.com/opentosca/opentosca-vintner/tree/61deb4a039723042fefd829d19c485746fc8e28e) to manage the variability when deploying the Multi Cushion Massage Seat (MCMS) scenario.
+We use [OpenTOSCA Vintner (61deb4a039723042fefd829d19c485746fc8e28e)](https://github.com/opentosca/opentosca-vintner/tree/61deb4a039723042fefd829d19c485746fc8e28e) to manage the variability when deploying the Multi Cushion Massage Seat (MCMS) scenario.
 The scenario consists of the following components:
 
 - MCMS Frontend: always in Docker on user device
@@ -52,7 +53,7 @@ We have the following tooling setup.
 
 ### OpenTOSCA Vintner
 
-We use [OpenTOSCA Vintner (4cca487655097f296d19e37bd51aa64552dcc9dflol)](https://github.com/opentosca/opentosca-vintner/tree/61deb4a039723042fefd829d19c485746fc8e28e) as TOSCA preprocessing and management layer to manage deployment variability and to deploy applications.
+We use [OpenTOSCA Vintner (61deb4a039723042fefd829d19c485746fc8e28e)](https://github.com/opentosca/opentosca-vintner/tree/61deb4a039723042fefd829d19c485746fc8e28e) as TOSCA preprocessing and management layer to manage deployment variability and to deploy applications.
 Please install it by extracting the respective archive and add the contained binary to your `PATH`.
 
 - [Linux arm64](assets/vintner-alpine-x64.xz)
