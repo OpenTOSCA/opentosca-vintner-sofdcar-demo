@@ -42,9 +42,6 @@ topology_template:
             has_hpc_installed: { equal: [ { variability_input: hpc_installed }, true ] }
             has_remote_access: { equal: [ { variability_input: remote_access }, true ] }
 
-        options:
-            artifact_default_condition_mode: container
-
     ###################################################
     #
     # Inputs
